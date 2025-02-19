@@ -1,0 +1,264 @@
+// prisma/schema.prisma
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum RegistrationMethod {
+  REGULAR
+  GOOGLE
+}
+
+enum ProfileType {
+  PUBLIC      // Free public profile
+  ANONYMOUS   // Premium feature
+}
+
+enum CategoryType {
+  ALL
+  SPECIFIED
+}
+
+enum OrderStatus {
+  PENDING
+  ACCEPTED
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id                  Int             @id @default(autoincrement())
+  email               String          @unique
+  password            String
+  phone               String?
+  registrationMethod  RegistrationMethod
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  
+  profile             Profile?
+
+  commonGoods         CommonGood[]
+  verifiedGoods       VerifiedGood[]
+  goodsRequests       GoodsRequest[]
+  notifications       Notification[]
+
+  // Relationships for conversations, orders, reviews, etc.
+  conversationParticipants ConversationParticipant[]
+  sentMessages        Message[]       @relation("SentMessages")
+  reviewsGiven        Review[]        @relation("ReviewsGiven")
+  reviewsReceived     Review[]        @relation("ReviewsReceived")
+  orders              Order[]
+}
+
+model Profile {
+  id           Int         @id @default(autoincrement())
+  firstName    String
+  lastName     String
+  idNumber     String
+  pic          String?     
+  profileType  ProfileType // PUBLIC or ANONYMOUS
+  
+  user         User        @relation(fields: [userId], references: [id])
+  userId       Int         @unique
+}
+
+model Category {
+  id          Int      @id @default(autoincrement())
+  name        String   @unique
+  description String?
+  
+  // Relations with goods offers and requests
+  commonGoods   CommonGood[]
+  verifiedGoods VerifiedGood[]
+  goodsRequests GoodsRequest[]
+}
+
+model CommonGood {
+  id              Int      @id @default(autoincrement())
+  title           String
+  description     String?
+  
+  // Offer details
+  productCategory String   // Alternatively, you can reference Category
+  productWeight   Float?   
+  arrivalDate     DateTime 
+  categoryType    CategoryType 
+  maxWeight       Float    
+  phoneNumber     String   
+  airportLocation String   
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  owner           User     @relation(fields: [ownerId], references: [id])
+  ownerId         Int
+
+  // Link to associated category if you wish to normalize
+  category        Category? @relation(fields: [categoryId], references: [id])
+  categoryId      Int?
+
+  goodsRequests   GoodsRequest[]
+  orders          Order[]
+}
+
+model VerifiedGood {
+  id              Int      @id @default(autoincrement())
+  title           String
+  description     String?
+  
+  productCategory String   
+  productWeight   Float?   
+  arrivalDate     DateTime 
+  categoryType    CategoryType 
+  maxWeight       Float    
+  phoneNumber     String   
+  airportLocation String   
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  owner           User     @relation(fields: [ownerId], references: [id])
+  ownerId         Int
+
+  category        Category? @relation(fields: [categoryId], references: [id])
+  categoryId      Int?
+
+  goodsRequests   GoodsRequest[]
+  orders          Order[]
+}
+
+model GoodsRequest {
+  id               Int      @id @default(autoincrement())
+  
+  // Request details
+  productName      String
+  productCategory  String   // You can also link to Category if preferred
+  productWeight    Float?   
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  requester        User     @relation(fields: [requesterId], references: [id])
+  requesterId      Int
+
+  // Optionally link a request to an offer (only one should be filled)
+  commonGood       CommonGood?   @relation(fields: [commonGoodId], references: [id])
+  commonGoodId     Int?
+  
+  verifiedGood     VerifiedGood? @relation(fields: [verifiedGoodId], references: [id])
+  verifiedGoodId   Int?
+
+  // Link to category if normalized
+  category        Category? @relation(fields: [categoryId], references: [id])
+  categoryId      Int?
+
+  orders          Order[]
+  notifications   Notification[]
+}
+
+model Notification {
+  id              Int      @id @default(autoincrement())
+  createdAt       DateTime @default(now())
+  read            Boolean  @default(false)
+  message         String
+  
+  goodsRequest    GoodsRequest? @relation(fields: [goodsRequestId], references: [id])
+  goodsRequestId  Int?
+
+  receiver        User     @relation(fields: [receiverId], references: [id])
+  receiverId      Int
+}
+
+model Order {
+  id               Int       @id @default(autoincrement())
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  status           OrderStatus @default(PENDING)
+  
+  // Link to the goods request that initiated the order
+  goodsRequest     GoodsRequest @relation(fields: [goodsRequestId], references: [id])
+  goodsRequestId   Int
+
+  // Optionally associate with a provider's offer – only one should be set
+  commonGood       CommonGood? @relation(fields: [commonGoodId], references: [id])
+  commonGoodId     Int?
+  
+  verifiedGood     VerifiedGood? @relation(fields: [verifiedGoodId], references: [id])
+  verifiedGoodId   Int?
+
+  user             User     @relation(fields: [userId], references: [id])
+  userId           Int
+
+  payments         Payment[]
+  reviews          Review[]
+}
+
+model Payment {
+  id             Int      @id @default(autoincrement())
+  createdAt      DateTime @default(now())
+  amount         Float
+  status         PaymentStatus @default(PENDING)
+  transactionId  String?  // For payment gateway transaction IDs
+  
+  order          Order    @relation(fields: [orderId], references: [id])
+  orderId        Int
+}
+
+model Review {
+  id             Int      @id @default(autoincrement())
+  rating         Int      // e.g., a scale from 1 to 5
+  comment        String?
+  createdAt      DateTime @default(now())
+  
+  // Reviewer gives a review to reviewee after an order
+  reviewer       User     @relation("ReviewsGiven", fields: [reviewerId], references: [id])
+  reviewerId     Int
+
+  reviewee       User     @relation("ReviewsReceived", fields: [revieweeId], references: [id])
+  revieweeId     Int
+
+  order          Order    @relation(fields: [orderId], references: [id])
+  orderId        Int
+}
+
+model Conversation {
+  id           Int       @id @default(autoincrement())
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  
+  messages     Message[]
+  participants ConversationParticipant[]
+}
+
+model ConversationParticipant {
+  id             Int          @id @default(autoincrement())
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId Int
+  user           User         @relation(fields: [userId], references: [id])
+  userId         Int
+
+  @@unique([conversationId, userId])
+}
+
+model Message {
+  id             Int          @id @default(autoincrement())
+  content        String
+  createdAt      DateTime     @default(now())
+  
+  sender         User         @relation("SentMessages", fields: [senderId], references: [id])
+  senderId       Int
+  
+  conversation   Conversation @relation(fields: [conversationId], references: [id])
+  conversationId Int
+}
